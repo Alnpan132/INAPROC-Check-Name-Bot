@@ -56,7 +56,7 @@ RED="\033[91m"; GREEN="\033[92m"; YELLOW="\033[93m"; CYAN="\033[96m"; RESET="\03
 # ================= VERSION CHECK =================
 def check_for_update():
     try:
-        url = "https://raw.githubusercontent.com/USERNAME/REPO_NAME/main/version.txt"
+        url = "https://raw.githubusercontent.com/Alnpan132/INAPROC-Check-Name-Bot/main/version.txt"
         latest = urllib.request.urlopen(url, timeout=2).read().decode().strip()
 
         if latest != BOT_VERSION:
@@ -69,7 +69,7 @@ def check_for_update():
         pass
 
 # ================= CONFIG =================
-BOT_VERSION = "1.0.0"
+BOT_VERSION = "1.1.1"
 DEFAULT_CHROME_PORT = 9555
 CURRENT_CHROME_PORT = DEFAULT_CHROME_PORT
 
@@ -91,6 +91,30 @@ SPINNER=itertools.cycle(["|","/","-","\\"])
 browser=None
 
 DATASOURCE_DIR = "DataSource"
+# ================= CHROME PORT MEMORY =================
+
+PORT_FILE = ".last_chrome_port"
+
+# Change default port to common DevTools port
+DEFAULT_CHROME_PORT = 9222
+
+def load_last_port():
+    try:
+        with open(PORT_FILE, "r") as f:
+            p = int(f.read().strip())
+            return p
+    except:
+        return DEFAULT_CHROME_PORT
+
+def save_last_port(port):
+    try:
+        with open(PORT_FILE, "w") as f:
+            f.write(str(port))
+    except:
+        pass
+
+# Load saved port if available
+CURRENT_CHROME_PORT = load_last_port()
 
 # ================= HOTKEY FLAGS =================
 PAUSE_SCAN=False
@@ -238,20 +262,38 @@ def reconnect_chrome_menu():
             input("Press ENTER to retry...")
 
 # ================= SAFE CSV =================
+
 def read_csv(path):
-    with open(path,newline="",encoding="utf-8-sig") as f:
+    with open(path, newline="", encoding="utf-8-sig") as f:
         return list(csv.reader(f))
 
-def write_csv(path,rows):
+
+def write_csv(path, rows):
     for _ in range(CSV_WRITE_RETRY):
         try:
-            with open(path,"w",newline="",encoding="utf-8-sig") as f:
+            with open(path, "w", newline="", encoding="utf-8-sig") as f:
                 csv.writer(f).writerows(rows)
             return True
         except PermissionError:
-            print(f"{RED}[ERROR]{RESET} CSV locked. Close Excel.")
+            print(f"{RED}[ERROR]{RESET} CSV file is locked. Please close Excel.")
             time.sleep(2)
     return False
+
+
+def is_csv_locked(path):
+    """
+    Check if CSV file is currently locked (usually opened by Excel).
+    This does NOT modify the file.
+    """
+    try:
+        with open(path, "a"):
+            pass
+        return False
+    except PermissionError:
+        return True
+    except:
+        return False
+
 
 # ================= COLUMN =================
 def find_name_column(rows):
@@ -449,7 +491,16 @@ def process_csv(path, mode="FULL"):
     global PAUSE_SCAN, ABORT_TO_MENU, FORCE_SUMMARY
     PAUSE_SCAN = ABORT_TO_MENU = FORCE_SUMMARY = False
 
+    # ===== CSV LOCK CHECK =====
+    if is_csv_locked(path):
+        clear()
+        print(f"{RED}[ERROR]{RESET} CSV file is currently open or locked.")
+        print("Please close the file in Excel and try again.")
+        input("\nPress ENTER to return to menu...")
+        return
+
     rows = read_csv(path)
+
     hr, ci = find_name_column(rows)
     si = find_status_column(rows, hr)
 
@@ -544,10 +595,15 @@ def process_csv(path, mode="FULL"):
     summary_menu(path, valid, fixed, error, scanned)
     
 def summary_menu(path, valid, fixed, error, total):
+    filename = os.path.basename(path)
+    m = re.search(r"(\d+)(?=\.csv$)", filename.lower())
+    csv_number = m.group(1) if m else "UNKNOWN"
+
     while True:
         clear()
         print(f"{CYAN}+----------------------------------+{RESET}")
-        print(f"{CYAN}|          SCAN SUMMARY            |{RESET}")
+        title = f"SUMMARY {csv_number}"
+        print(f"{CYAN}|{title.center(34)}|{RESET}")
         print(f"{CYAN}+----------------------------------+{RESET}")
         print(f"| TIDAK ADA : {GREEN}{valid:>5}{RESET}")
         print(f"| FIXED     : {YELLOW}{fixed:>5}{RESET}")
@@ -583,6 +639,8 @@ def summary_menu(path, valid, fixed, error, total):
         # ===== EXIT PROGRAM =====
         elif c == "0":
             sys.exit(0)
+
+
 
 
 def main_menu():
