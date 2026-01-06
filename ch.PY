@@ -91,30 +91,6 @@ SPINNER=itertools.cycle(["|","/","-","\\"])
 browser=None
 
 DATASOURCE_DIR = "DataSource"
-# ================= CHROME PORT MEMORY =================
-
-PORT_FILE = ".last_chrome_port"
-
-# Change default port to common DevTools port
-DEFAULT_CHROME_PORT = 9222
-
-def load_last_port():
-    try:
-        with open(PORT_FILE, "r") as f:
-            p = int(f.read().strip())
-            return p
-    except:
-        return DEFAULT_CHROME_PORT
-
-def save_last_port(port):
-    try:
-        with open(PORT_FILE, "w") as f:
-            f.write(str(port))
-    except:
-        pass
-
-# Load saved port if available
-CURRENT_CHROME_PORT = load_last_port()
 
 # ================= HOTKEY FLAGS =================
 PAUSE_SCAN=False
@@ -190,76 +166,6 @@ def is_bot_foreground():
     except:
         return False
 
-
-# ================= CHROME PORT SUPPORT =================
-def find_chrome_ports():
-    ports=[]
-    for port in COMMON_CHROME_PORTS:
-        try:
-            urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/json/version",
-                timeout=0.4
-            )
-            ports.append(port)
-        except:
-            pass
-    return ports
-
-def reconnect_chrome_menu():
-    global browser, CURRENT_CHROME_PORT
-
-    while True:
-        clear()
-        print(f"{CYAN}RECONNECT TO CHROME{RESET}")
-        print("----------------------------------")
-        print(f"Current Port : {CURRENT_CHROME_PORT}")
-        print("----------------------------------")
-        print("Scanning common Chrome ports...\n")
-
-        ports=find_chrome_ports()
-
-        if ports:
-            for i,p in enumerate(ports,1):
-                print(f"[{i}] Port {p}")
-        else:
-            print("(no active Chrome debug ports found)")
-
-        print("----------------------------------")
-        print("[M] Manually enter port")
-        print("[0] Cancel")
-        print("----------------------------------")
-
-        c=input("Select option : ").strip().lower()
-        if c=="0":
-            return
-
-        if c=="m":
-            try:
-                port=int(input("Enter Chrome debug port : ").strip())
-            except:
-                continue
-        else:
-            try:
-                port=ports[int(c)-1]
-            except:
-                continue
-
-        try:
-            browser.quit()
-        except:
-            pass
-
-        try:
-            opt=Options()
-            opt.debugger_address=f"127.0.0.1:{port}"
-            browser=webdriver.Chrome(options=opt)
-            CURRENT_CHROME_PORT=port
-            print(f"{GREEN}Connected to Chrome on port {port}{RESET}")
-            time.sleep(1)
-            return
-        except:
-            print(f"{RED}Failed to connect to port {port}{RESET}")
-            input("Press ENTER to retry...")
 
 # ================= SAFE CSV =================
 
@@ -379,68 +285,85 @@ def generate_variants(original):
 
 # ================= BROWSER =================
 
-def connect_browser():
+import socket
+
+COMMON_CHROME_PORTS = [9222, 9333, 9444, 9555, 9666]
+
+def scan_open_ports(ports, timeout=0.5):
+    result = []
+    for port in ports:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=timeout):
+                result.append(port)
+        except:
+            pass
+    return result
+
+
+def reconnect_chrome_menu():
     global browser, CURRENT_CHROME_PORT
 
-    while True:
-        clear()
-        print(f"{CYAN}CONNECTING TO CHROME{RESET}")
-        print(f"Using port : {CURRENT_CHROME_PORT}")
-        print()
+    clear()
+    print(f"{CYAN}CONNECTING TO CHROME{RESET}")
+    print(f"Using port : {CURRENT_CHROME_PORT}")
+    print()
 
-        for _ in range(6):
-            sys.stdout.write(f"\rLoading {next(SPINNER)}")
-            sys.stdout.flush()
-            time.sleep(0.2)
+    # loading animation (finite, never stuck)
+    for _ in range(6):
+        sys.stdout.write(f"\rLoading {next(SPINNER)}")
+        sys.stdout.flush()
+        time.sleep(0.2)
 
-        # ---- CHECK CHROME DEBUG PORT ----
-        try:
-            urllib.request.urlopen(
-                f"http://127.0.0.1:{CURRENT_CHROME_PORT}/json/version",
-                timeout=2
-            )
-        except:
-            clear()
-            print(f"{RED}[CHROME NOT DETECTED]{RESET}")
-            print()
-            print("Chrome is not running with remote debugging.")
-            print()
-            print(f"Start Chrome with:")
-            print(f"{YELLOW}chrome.exe --remote-debugging-port={CURRENT_CHROME_PORT}{RESET}")
-            print()
-            print("----------------------------------")
-            print("[1] Retry")
-            print("[2] Change Chrome port")
-            print("[0] Exit")
-            print("----------------------------------")
+    open_ports = scan_open_ports(COMMON_CHROME_PORTS)
 
-            c = input("Select option : ").strip()
-
-            if c == "1":
-                continue
-            elif c == "2":
-                p = input("Enter Chrome port : ").strip()
-                if p.isdigit():
-                    CURRENT_CHROME_PORT = int(p)
-                continue
-            else:
-                sys.exit(0)
-
-        # ---- ATTACH SELENIUM ----
+    # try current port first
+    if CURRENT_CHROME_PORT in open_ports:
         try:
             opt = Options()
             opt.debugger_address = f"127.0.0.1:{CURRENT_CHROME_PORT}"
             browser = webdriver.Chrome(options=opt)
-        except Exception as e:
-            clear()
-            print(f"{RED}[FAILED TO ATTACH]{RESET}")
-            print(e)
-            input("\nPress ENTER to retry...")
-            continue
+            print(f"\n{GREEN}Connected successfully!{RESET}")
+            input("\nPress ENTER to return to menu...")
+            return
+        except:
+            pass
 
-        print(f"\n{GREEN}Connected successfully!{RESET}")
-        time.sleep(0.6)
-        return
+    clear()
+    print(f"{RED}[CHROME NOT CONNECTED]{RESET}")
+    print()
+
+    if open_ports:
+        print("Detected Chrome debug ports:")
+        for i, p in enumerate(open_ports, 1):
+            print(f"[{i}] Use port {p}")
+    else:
+        print("No common Chrome debug ports detected.")
+
+    print("----------------------------------")
+    print("[M] Manual input port")
+    print("[R] Retry")
+    print("[0] Exit")
+    print("----------------------------------")
+
+    choice = input("Select option : ").strip().lower()
+
+    if choice.isdigit() and open_ports:
+        idx = int(choice) - 1
+        if 0 <= idx < len(open_ports):
+            CURRENT_CHROME_PORT = open_ports[idx]
+        return reconnect_chrome_menu()
+
+    if choice == "m":
+        p = input("Enter Chrome port : ").strip()
+        if p.isdigit():
+            CURRENT_CHROME_PORT = int(p)
+        return reconnect_chrome_menu()
+
+    if choice == "r":
+        return reconnect_chrome_menu()
+
+    sys.exit(0)
+
 
 # ================= CHECK =================
 def check_name(name, label):
@@ -682,6 +605,5 @@ def main_menu():
 if __name__ == "__main__":
     check_for_update()
     register_hotkeys()
-    connect_browser()
     main_menu()
 
