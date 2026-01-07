@@ -3,6 +3,12 @@
 # FINAL VERSION (AUTO INSTALL REQUIREMENTS ADDED)
 # =====================================================
 
+BOT_VERSION = "1.1.1"
+
+VERSION_URL = "https://raw.githubusercontent.com/Alnpan132/INAPROC-Check-Name-Bot/main/version.txt"
+CH_PY_URL   = "https://raw.githubusercontent.com/Alnpan132/INAPROC-Check-Name-Bot/main/ch.PY"
+
+
 import os, csv, sys, time, urllib.request, itertools, re, json, ctypes
 
 # ================= EARLY AUTO INSTALL =================
@@ -56,27 +62,49 @@ RED="\033[91m"; GREEN="\033[92m"; YELLOW="\033[93m"; CYAN="\033[96m"; RESET="\03
 # ================= VERSION CHECK =================
 def check_for_update():
     try:
-        url = "https://raw.githubusercontent.com/Alnpan132/INAPROC-Check-Name-Bot/main/version.txt"
-        latest = urllib.request.urlopen(url, timeout=2).read().decode().strip()
+        print("Checking for update...", end="", flush=True)
+        time.sleep(0.6)
 
-        if latest != BOT_VERSION:
-            print(f"\n{YELLOW}[UPDATE AVAILABLE]{RESET}")
-            print(f"Current version : {BOT_VERSION}")
-            print(f"Latest version  : {latest}")
-            print("Please update from GitHub.\n")
-            input("Press ENTER to continue...")
-    except:
-        pass
+        latest = urllib.request.urlopen(VERSION_URL, timeout=3).read().decode().strip()
+
+        # clear the line
+        print("\r" + " " * 40 + "\r", end="")
+
+        if latest == BOT_VERSION:
+            return
+
+        print(f"{YELLOW}[UPDATE AVAILABLE]{RESET}")
+        print(f"Current version : {BOT_VERSION}")
+        print(f"Latest version  : {latest}")
+        choice = input("Install update now? (Y/N) : ").strip().lower()
+
+        if choice != "y":
+            return
+
+        print("\nDownloading update...")
+        tmp = "ch.PY.new"
+        data = urllib.request.urlopen(CH_PY_URL, timeout=5).read()
+
+        with open(tmp, "wb") as f:
+            f.write(data)
+
+        os.replace(tmp, "ch.PY")
+
+        print("Update installed successfully.")
+        print("Restarting bot...\n")
+        time.sleep(1)
+
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    except Exception:
+        # silently ignore ALL update errors (404, offline, etc)
+        print("\r" + " " * 40 + "\r", end="")
+        return
+
 
 # ================= CONFIG =================
-BOT_VERSION = "1.1.1"
 DEFAULT_CHROME_PORT = 9555
 CURRENT_CHROME_PORT = DEFAULT_CHROME_PORT
-
-COMMON_CHROME_PORTS = [
-    9000, 9111, 9222, 9333, 9444,
-    9555, 9666, 9777, 9888, 9999
-]
 
 ERROR_DUP_TEXT="Nama Produk tidak boleh sama"
 HEADER_SCAN_MAX_ROWS=10
@@ -127,6 +155,12 @@ def force_summary():
 # ================= UTIL =================
 def clear():
     os.system("cls")
+# ================= MENU BOX UTIL =================
+def box_border(width=34):
+    return f"+{'-' * (width + 2)}+"
+
+def box_line(text="", width=34):
+    return f"| {text.ljust(width)} |"
 
 def csv_files():
     if not os.path.isdir(DATASOURCE_DIR):
@@ -289,7 +323,7 @@ import socket
 
 COMMON_CHROME_PORTS = [9222, 9333, 9444, 9555, 9666]
 
-def scan_open_ports(ports, timeout=0.5):
+def scan_open_ports(ports, timeout=0.15):
     result = []
     for port in ports:
         try:
@@ -303,66 +337,79 @@ def scan_open_ports(ports, timeout=0.5):
 def reconnect_chrome_menu():
     global browser, CURRENT_CHROME_PORT
 
-    clear()
-    print(f"{CYAN}CONNECTING TO CHROME{RESET}")
-    print(f"Using port : {CURRENT_CHROME_PORT}")
-    print()
+    WIDTH = 34
 
-    # loading animation (finite, never stuck)
-    for _ in range(6):
-        sys.stdout.write(f"\rLoading {next(SPINNER)}")
-        sys.stdout.flush()
-        time.sleep(0.2)
+    while True:
 
-    open_ports = scan_open_ports(COMMON_CHROME_PORTS)
+        # ⚡ FAST PATH — only auto-return if already connected
+        if browser:
+            try:
+                browser.title
+                return  # already connected → back to main menu
+            except:
+                browser = None  # dead session → continue to menu
 
-    # try current port first
-    if CURRENT_CHROME_PORT in open_ports:
-        try:
-            opt = Options()
-            opt.debugger_address = f"127.0.0.1:{CURRENT_CHROME_PORT}"
-            browser = webdriver.Chrome(options=opt)
-            print(f"\n{GREEN}Connected successfully!{RESET}")
-            input("\nPress ENTER to return to menu...")
+        clear()
+
+        print(f"{CYAN}{box_border(WIDTH)}{RESET}")
+        print(f"{CYAN}{box_line('CONNECTING TO CHROME', WIDTH)}{RESET}")
+        print(f"{CYAN}{box_border(WIDTH)}{RESET}")
+
+        print("| Current Chrome Port : ", end="")
+        if browser is None:
+            print(f"{RED}Not Connected{RESET}")
+        else:
+            print(f"{GREEN}{CURRENT_CHROME_PORT}{RESET}")
+
+        print(f"{CYAN}{box_border(WIDTH)}{RESET}")
+
+        open_ports = scan_open_ports(COMMON_CHROME_PORTS)
+
+        if open_ports:
+            print("| Common ports detected:")
+            for i, p in enumerate(open_ports, 1):
+                print(f"| {GREEN}[{i}]{RESET} {p}")
+        else:
+            print("| No common ports detected.")
+
+        print(f"{CYAN}{box_border(WIDTH)}{RESET}")
+
+        print(f"| {GREEN}[M]{RESET} Manual input port")
+        print(f"| {RED}[0]{RESET} Return to Main Menu")
+        print(f"{CYAN}{box_border(WIDTH)}{RESET}")
+
+        choice = input("Select option : ").strip().lower()
+
+        if choice.isdigit() and open_ports:
+            idx = int(choice) - 1
+            if 0 <= idx < len(open_ports):
+                CURRENT_CHROME_PORT = open_ports[idx]
+                try:
+                    opt = Options()
+                    opt.debugger_address = f"127.0.0.1:{CURRENT_CHROME_PORT}"
+                    browser = webdriver.Chrome(options=opt)
+                    return
+                except:
+                    print(f"\n{RED}[FAILED]{RESET} Cannot connect.")
+                    input("Press ENTER...")
+                    continue
+
+        if choice == "m":
+            p = input("Enter Chrome port : ").strip()
+            if p.isdigit():
+                CURRENT_CHROME_PORT = int(p)
+                try:
+                    opt = Options()
+                    opt.debugger_address = f"127.0.0.1:{CURRENT_CHROME_PORT}"
+                    browser = webdriver.Chrome(options=opt)
+                    return
+                except:
+                    print(f"\n{RED}[FAILED]{RESET} Cannot connect.")
+                    input("Press ENTER...")
+                    continue
+
+        if choice == "0":
             return
-        except:
-            pass
-
-    clear()
-    print(f"{RED}[CHROME NOT CONNECTED]{RESET}")
-    print()
-
-    if open_ports:
-        print("Detected Chrome debug ports:")
-        for i, p in enumerate(open_ports, 1):
-            print(f"[{i}] Use port {p}")
-    else:
-        print("No common Chrome debug ports detected.")
-
-    print("----------------------------------")
-    print("[M] Manual input port")
-    print("[R] Retry")
-    print("[0] Exit")
-    print("----------------------------------")
-
-    choice = input("Select option : ").strip().lower()
-
-    if choice.isdigit() and open_ports:
-        idx = int(choice) - 1
-        if 0 <= idx < len(open_ports):
-            CURRENT_CHROME_PORT = open_ports[idx]
-        return reconnect_chrome_menu()
-
-    if choice == "m":
-        p = input("Enter Chrome port : ").strip()
-        if p.isdigit():
-            CURRENT_CHROME_PORT = int(p)
-        return reconnect_chrome_menu()
-
-    if choice == "r":
-        return reconnect_chrome_menu()
-
-    sys.exit(0)
 
 
 # ================= CHECK =================
@@ -373,7 +420,9 @@ def check_name(name, label):
         EC.presence_of_element_located((By.XPATH, "//input[@name='name']"))
     )
     field.send_keys(Keys.CONTROL, "a", Keys.BACKSPACE)
-    field.send_keys(name)
+    # --- ChromeDriver BMP safety ---
+    safe_name = name.encode("utf-16", "surrogatepass").decode("utf-16", "ignore")
+    field.send_keys(safe_name)
 
     while True:
 
@@ -563,38 +612,59 @@ def summary_menu(path, valid, fixed, error, total):
         elif c == "0":
             sys.exit(0)
 
-
-
+# ================= MAIN MENU =================
 
 def main_menu():
+    global browser
+
     while True:
         clear()
+
         print(f"{CYAN}+----------------------------------+{RESET}")
-        print(f"{CYAN}| INAPROC PRODUCT NAME BOT         |{RESET}")
+        print(f"{CYAN}|  INAPROC PRODUCT NAME BOT         |{RESET}")
         print(f"{CYAN}+----------------------------------+{RESET}")
-        print(f"| Current Chrome Port : {CURRENT_CHROME_PORT}")
+
+        print("| Current Chrome Port : ", end="")
+        if browser is None:
+            print(f"{RED}Not Connected{RESET}")
+        else:
+            print(f"{GREEN}{CURRENT_CHROME_PORT}{RESET}")
+
         print(f"| CSV Files           : {len(csv_files())}")
+
         print(f"{CYAN}+----------------------------------+{RESET}")
-        print(f"| {GREEN}[1]{RESET} Full CSV Scan")
-        print(f"| {GREEN}[3]{RESET} Show CSV Files")
-        print(f"| {YELLOW}[4]{RESET} Reconnect Chrome")
-        print(f"| {RED}[0]{RESET} Exit")
+
+        print(f"| {GREEN}[1]{RESET} Full CSV Scan                 |")
+        print(f"| {GREEN}[2]{RESET} Show CSV Files                |")
+        print(f"| {GREEN}[3]{RESET} Reconnect Chrome              |")
+        print(f"| {RED}[0]{RESET} Exit                          |")
+
         print(f"{CYAN}+----------------------------------+{RESET}")
 
         opt = input("Select option : ").strip()
 
         if opt == "1":
             path = select_csv_file()
-            if path:
-                process_csv(path, "FULL")
+            if not path:
+                continue
+            if browser is None:
+                print(f"\n{RED}[ERROR]{RESET} Chrome is not connected.")
+                print("Please use [Reconnect Chrome] first.")
+                input("Press ENTER to return to menu...")
+                continue
+            process_csv(path, "FULL")
 
-        elif opt == "3":
+        elif opt == "2":
             clear()
-            for f in csv_files():
-                print(f)
+            files = csv_files()
+            if files:
+                for f in files:
+                    print(f)
+            else:
+                print("No CSV files found.")
             input("\nPress ENTER...")
 
-        elif opt == "4":
+        elif opt == "3":
             reconnect_chrome_menu()
 
         elif opt == "0":
